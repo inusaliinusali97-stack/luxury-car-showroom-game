@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Luxury Car Showroom</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#111;color:#fff;font-family:Arial,sans-serif}
+#game{position:fixed;inset:0}canvas{display:block}
+.hud{position:fixed;inset:0;pointer-events:none}
+.wallet{position:absolute;top:14px;left:14px;background:#0009;padding:10px 14px;border-radius:14px;font-weight:700}
+.actions{position:absolute;right:14px;bottom:24px;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;pointer-events:auto;max-width:60%}
+button{border:0;border-radius:12px;padding:11px 14px;background:#fff;color:#111;font-weight:700}
+button:active{transform:scale(.96)}
+#modules{position:absolute;top:14px;right:14px;display:flex;gap:6px;pointer-events:auto}
+#modules button{background:#111c;color:#fff}
+#panel{display:none;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(92vw,430px);max-height:82vh;overflow:auto;background:#10131bf5;border:1px solid #ffffff22;border-radius:20px;padding:20px;pointer-events:auto}
+#panel h2{margin-top:0}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:center;margin:10px 0;padding:10px;background:#ffffff0b;border-radius:12px}
+#close{float:right}
+#toast{position:absolute;left:50%;top:18%;transform:translateX(-50%);background:#000c;padding:10px 16px;border-radius:20px;display:none}
+#joystick{position:absolute;left:22px;bottom:25px;width:105px;height:105px;border-radius:50%;background:#fff2;border:2px solid #fff5;pointer-events:auto;display:none}
+#stick{position:absolute;width:45px;height:45px;left:28px;top:28px;border-radius:50%;background:#fffc}
+@media(max-width:700px){#modules{top:10px;right:10px;max-width:80%;flex-wrap:wrap}.actions{max-width:72%}.wallet{top:10px;left:10px}}
+</style>
+</head>
+<body>
+<div id="game"></div>
+<div class="hud">
+  <div class="wallet">CR <span id="cr">12850</span> · Gems <span id="gems">150</span> · RP <span id="rp">2340</span></div>
+  <div id="modules">
+    <button onclick="openPanel('showroom')">🚘 Showroom</button>
+    <button onclick="openPanel('craft')">🔧 Craft</button>
+    <button onclick="openPanel('fashion')">👕 Fashion</button>
+    <button onclick="openPanel('space')">🛰️ Space</button>
+  </div>
+  <div id="actions" class="actions"></div>
+  <div id="toast"></div>
+  <div id="joystick"><div id="stick"></div></div>
+  <div id="panel"><button id="close" onclick="closePanel()">✕</button><div id="panelContent"></div></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.min.js"></script>
+<script>
+let scene,camera,renderer,car,player,hoodOpen=false,paint=0x151820;
+let state={cr:12850,gems:150,rp:2340,space:64,craft:0,clothes:0};
+const $=id=>document.getElementById(id);
+function toast(t){$('toast').textContent=t;$('toast').style.display='block';clearTimeout(window.tt);window.tt=setTimeout(()=>$('toast').style.display='none',1800)}
+function updateWallet(){$('cr').textContent=state.cr;$('gems').textContent=state.gems;$('rp').textContent=state.rp}
+
+scene=new THREE.Scene();
+scene.background=new THREE.Color(0x91b8e8);
+camera=new THREE.PerspectiveCamera(65,innerWidth/innerHeight,.1,500);
+renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);
+$('game').appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xffffff,0x56606c,2));
+const sun=new THREE.DirectionalLight(0xffffff,3);sun.position.set(10,20,10);scene.add(sun);
+
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(70,70),new THREE.MeshStandardMaterial({color:0x30343a,roughness:.75}));
+floor.rotation.x=-Math.PI/2;scene.add(floor);
+const grid=new THREE.GridHelper(70,35,0x777777,0x444444);grid.position.y=.01;scene.add(grid);
+
+function box(x,y,z,sx,sy,sz,c,group=scene){
+ const m=new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz),new THREE.MeshStandardMaterial({color:c,metalness:.25,roughness:.45}));
+ m.position.set(x,y,z);group.add(m);return m;
+}
+box(0,7,-18,70,14,1,0x20252d);box(-34,7,0,1,14,36,0x20252d);box(34,7,0,1,14,36,0x20252d);
+box(0,14,0,70,1,36,0x20252d);
+for(let x=-24;x<=24;x+=12){const l=new THREE.PointLight(0xffffff,18,15);l.position.set(x,11,0);scene.add(l);box(x,13.5,0,5,.15,1,0xffffff)}
+
+function makeCar(){
+ const g=new THREE.Group();g.position.set(0,1.05,0);scene.add(g);car=g;
+ box(0,1,0,7.8,1.15,3.2,paint,g);
+ box(0,1.9,.15,4.3,1.35,2.8,0x252b35,g);
+ const windshield=box(0,2.05,1.57,3.6,1.05,.08,0x182b3d,g);
+ const back=box(0,2.05,-1.35,3.6,1.05,.08,0x182b3d,g);
+ const hood=box(1.9,1.72,0,2.1,.18,3.0,paint,g);hood.name='hood';
+ const rear=box(-2.5,1.55,0,1.0,.55,3.05,paint,g);
+ for(const x of [-2.5,2.5])for(const z of [-1.7,1.7]){
+   const w=new THREE.Mesh(new THREE.CylinderGeometry(.68,.68,.42,32),new THREE.MeshStandardMaterial({color:0x111111,metalness:.6,roughness:.3}));
+   w.rotation.z=Math.PI/2;w.position.set(x,.65,z);g.add(w);
+   const hub=new THREE.Mesh(new THREE.CylinderGeometry(.25,.25,.44,24),new THREE.MeshStandardMaterial({color:0xbfc5cc,metalness:.9,roughness:.2}));
+   hub.rotation.z=Math.PI/2;hub.position.set(x,.65,z);g.add(hub);
+ }
+ for(const z of [-1.15,1.15])box(3.75,1.15,z,.15,.45,.55,0xffffff,g);
+ const eng=new THREE.Group();eng.position.set(2.0,1.8,0);eng.visible=false;eng.name='engine';
+ box(0,0,0,1.8,.65,1.8,0x555a60,eng);box(.55,.4,0,.35,.45,.35,0x777777,eng);g.add(eng);
+ return g;
+}
+makeCar();
+
+function makePlayer(){
+ const g=new THREE.Group();g.position.set(0,0,8);scene.add(g);player=g;
+ box(0,1.7,0,.8,1.5,.5,0x30363f,g);
+ box(0,2.8,0,.58,.58,.58,0xd39b78,g);
+ box(-.22,.65,0,.22,1.0,.3,0x20242a,g);box(.22,.65,0,.22,1.0,.3,0x20242a,g);
+ box(-.58,1.7,0,.18,1.2,.18,0x30363f,g);box(.58,1.7,0,.18,1.2,.18,0x30363f,g);
+ return g;
+}
+makePlayer();
+
+let keys={};addEventListener('keydown',e=>keys[e.key.toLowerCase()]=true);addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+let dragging=false,lastX=0,lastY=0,yaw=0,pitch=.25;
+renderer.domElement.addEventListener('pointerdown',e=>{dragging=true;lastX=e.clientX;lastY=e.clientY});
+addEventListener('pointerup',()=>dragging=false);
+addEventListener('pointermove',e=>{if(!dragging)return;yaw-=(e.clientX-lastX)*.006;pitch-=(e.clientY-lastY)*.004;pitch=Math.max(-.3,Math.min(.8,pitch));lastX=e.clientX;lastY=e.clientY});
+
+function move(dt){
+ let x=0,z=0;if(keys.w||keys.arrowup)z-=1;if(keys.s||keys.arrowdown)z+=1;if(keys.a||keys.arrowleft)x-=1;if(keys.d||keys.arrowright)x+=1;
+ if(x||z){let len=Math.hypot(x,z);x/=len;z/=len;let speed=keys.shift?7:3.5;player.position.x+=x*speed*dt;player.position.z+=z*speed*dt}
+ const target=new THREE.Vector3(player.position.x,2.2,player.position.z);
+ const dist=7;const off=new THREE.Vector3(Math.sin(yaw)*dist,3+pitch*3,Math.cos(yaw)*dist);
+ camera.position.lerp(target.clone().add(off),.12);camera.lookAt(target);
+}
+function nearCar(){return player.position.distanceTo(car.position)<5}
+function renderActions(){
+ const a=$('actions');a.innerHTML='';
+ if(nearCar()){
+  addAction('🔧 Repair',repairCar);addAction(hoodOpen?'🔒 Close hood':'🔓 Open hood',toggleHood);
+  addAction('🎨 Paint',changePaint);addAction('⚙️ Upgrade engine',swapEngine);
+ }
+}
+function addAction(t,fn){const b=document.createElement('button');b.textContent=t;b.onclick=fn;$('actions').appendChild(b)}
+function repairCar(){if(state.cr<500)return toast('Need 500 CR');state.cr-=500;updateWallet();toast('Car repaired')}
+function toggleHood(){hoodOpen=!hoodOpen;car.getObjectByName('engine').visible=hoodOpen;toast(hoodOpen?'Engine exposed':'Hood closed')}
+function changePaint(){const cols=[0x151820,0x8d1111,0x173b72,0xc4a400,0xffffff];paint=cols[(cols.indexOf(paint)+1)%cols.length];car.traverse(o=>{if(o.isMesh&&o.name!=='engine')o.material.color.setHex(paint)});toast('Paint changed')}
+function swapEngine(){if(state.cr<2500)return toast('Need 2500 CR');state.cr-=2500;state.rp+=500;updateWallet();toast('V8 performance upgrade installed')}
+
+function openPanel(type){
+ $('panel').style.display='block';let h='';
+ if(type==='showroom')h='<h2>🚘 Car Showroom</h2><p>Apex Hyperion GT</p><div class="row"><span>Condition</span><b>92%</b></div><div class="row"><span>Engine</span><b>V8 Twin Turbo</b></div><p>Walk to the car to use contextual controls.</p>';
+ if(type==='craft')h='<h2>🔧 Crafting Workbench</h2><div class="row"><span>Materials</span><b>'+state.craft+'</b></div><button onclick="craft()">Craft component (500 CR)</button>';
+ if(type==='fashion')h='<h2>👕 Fashion Studio</h2><div class="row"><span>Clothes crafted</span><b>'+state.clothes+'</b></div><button onclick="sellClothes()">Craft & sell outfit</button>';
+ if(type==='space')h='<h2>🛰️ Space Program</h2><div class="row"><span>Satellite progress</span><b>'+state.space+'%</b></div><button onclick="mission()">Research mission (+5%)</button>';
+ if(type==='shop')h='<h2>💎 Demo Shop</h2><p>Simulation only.</p><button onclick="demoPay()">₹99 → 100 Gems (demo)</button>';
+ $('panelContent').innerHTML=h;
+}
+function closePanel(){$('panel').style.display='none'}
+function craft(){if(state.cr<500)return toast('Need 500 CR');state.cr-=500;state.craft++;state.rp+=100;updateWallet();openPanel('craft');toast('Component crafted')}
+function sellClothes(){state.clothes++;state.cr+=1200;updateWallet();openPanel('fashion');toast('Outfit sold')}
+function mission(){state.space=Math.min(100,state.space+5);state.rp+=250;updateWallet();openPanel('space');toast('Research progress +5%')}
+function demoPay(){state.gems+=100;updateWallet();toast('Demo payment complete')}
+
+function animate(){
+ requestAnimationFrame(animate);move(.016);renderActions();renderer.render(scene,camera);
+}
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+updateWallet();animate();
+</script>
+</body>
+</html>
